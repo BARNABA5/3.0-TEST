@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SmartFix Barney 3.0 — Keyword Troubleshooter</title>
+<style>
+  :root{
+    --bg:#0f1724; --card:#0b1220; --accent:#4a90e2; --muted:#9aa7bd; --glass: rgba(255,255,255,0.03);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+    background:linear-gradient(180deg,#071226 0%, #0b1b2b 100%); color:#e6f0fb;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  }
+  .app{
+    max-width:1000px;margin:28px auto;padding:20px;border-radius:14px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    box-shadow: 0 8px 30px rgba(2,6,23,0.6);
+    display:grid;grid-template-columns: 1fr 340px;gap:18px;
+  }
+
+  header{grid-column:1/-1;display:flex;align-items:center;gap:12px}
+  .logo{
+    width:64px;height:64px;border-radius:12px;background:linear-gradient(135deg,var(--accent),#6a5cff);
+    display:flex;align-items:center;justify-content:center;font-weight:700;color:white;font-size:20px;box-shadow:0 6px 18px rgba(0,0,0,0.5);
+  }
+  h1{margin:0;font-size:18px}
+  p.lead{margin:0;color:var(--muted);font-size:13px}
+
+  .main{
+    padding:14px;border-radius:12px;background:linear-gradient(180deg,var(--card), rgba(255,255,255,0.02));min-height:480px;
+  }
+  .controls{display:flex;gap:8px;align-items:center;margin-top:12px}
+  input[type="text"], textarea{
+    width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;outline:none;
+  }
+  .name-row{display:flex;gap:8px}
+  button.btn{
+    background:var(--accent);color:white;padding:10px 14px;border-radius:10px;border:none;cursor:pointer;font-weight:600;
+  }
+  button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+
+  .dialogue{margin-top:12px;padding:10px;border-radius:10px;background:var(--glass);min-height:72px;white-space:pre-line}
+  .response-box{margin-top:14px;padding:12px;border-radius:10px;background:#021126;border:1px solid rgba(255,255,255,0.03);min-height:140px;white-space:pre-wrap;font-size:14px;line-height:1.45}
+
+  .side{
+    padding:14px;border-radius:12px;background:linear-gradient(180deg,var(--card), rgba(255,255,255,0.01));min-height:480px;display:flex;flex-direction:column;
+  }
+  .side h3{margin:0 0 8px 0;font-size:14px}
+  .keywords{overflow:auto;padding:8px;border-radius:8px;background:rgba(255,255,255,0.01);flex:1}
+  .kw{display:flex;flex-wrap:wrap;gap:8px}
+  .pill{background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:999px;font-size:12px;color:var(--muted);cursor:default}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
+
+  footer{grid-column:1/-1;margin-top:8px;color:var(--muted);font-size:13px;text-align:center}
+
+  @media (max-width:880px){
+    .app{grid-template-columns:1fr; padding:12px}
+    .side{order:2}
+  }
+</style>
+</head>
+<body>
+<div class="app" role="application" aria-label="SmartFix Barney 3.0">
+  <header>
+    <div class="logo">B</div>
+    <div>
+      <h1>SmartFix Barney 3.0</h1>
+      <p class="lead">Friendly keyword-based phone & computer troubleshooter — voice input & live speech-text</p>
+    </div>
+  </header>
+
+  <section class="main" aria-labelledby="main-heading">
+    <div id="dialogue" class="dialogue" role="status" aria-live="polite"></div>
+
+    <div class="name-row" style="margin-top:10px;">
+      <input id="nameInput" type="text" placeholder="Type your name (Barney will remember)" />
+      <button id="saveNameBtn" class="btn">Send</button>
+      <button id="clearNameBtn" class="secondary">Clear</button>
+    </div>
+
+    <div class="controls">
+      <button id="micBtn" class="btn">🎤 Start Voice</button>
+      <button id="stopMicBtn" class="secondary">■ Stop</button>
+      <input id="manualIssue" type="text" placeholder="Or type your issue here and press Ask" />
+      <button id="askBtn" class="btn">Ask</button>
+    </div>
+
+    <div id="responseBox" class="response-box" aria-live="polite"></div>
+
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+      <div style="flex:1;color:var(--muted);font-size:13px;">
+        Tip: speak clearly or type. If recognition fails, type the issue and press Ask.
+      </div>
+      <div style="text-align:right;color:var(--muted);font-size:13px;">
+        Voice engine: <span id="voiceInfo">not initialized</span>
+      </div>
+    </div>
+  </section>
+
+  <aside class="side" aria-labelledby="sidebar-heading">
+    <h3 id="sidebar-heading">Keywords & Example Triggers</h3>
+    <div class="keywords" id="keywordsList" role="list"></div>
+    <div class="hint">Click a keyword to paste it into the issue box (quick test).</div>
+  </aside>
+
+  <footer>Built for you — runs completely in the browser. No server, no API required.</footer>
+</div>
+
+<script>
+/*
+  SmartFix Barney 3.0 — frontend-only.
+  - localStorage saves name
+  - SpeechSynthesis for speaking answers
+  - SpeechRecognition for voice input (Chrome recommended)
+  - Keyword mapping below: each entry contains multiple trigger keywords and a response object
+*/
+
+const dialogueEl = document.getElementById('dialogue');
+const responseEl = document.getElementById('responseBox');
+const nameInput = document.getElementById('nameInput');
+const saveNameBtn = document.getElementById('saveNameBtn');
+const clearNameBtn = document.getElementById('clearNameBtn');
+const micBtn = document.getElementById('micBtn');
+const stopMicBtn = document.getElementById('stopMicBtn');
+const manualIssue = document.getElementById('manualIssue');
+const askBtn = document.getElementById('askBtn');
+const keywordsList = document.getElementById('keywordsList');
+const voiceInfo = document.getElementById('voiceInfo');
+
+let userName = localStorage.getItem('barney_name') || '';
+if(userName) nameInput.value = userName;
+
+function setDialogue(text){
+  dialogueEl.innerText = text;
+}
+function setResponse(text){
+  responseEl.innerText = text;
+}
+
+// initial greeting (voice + text)
+function greetOnLoad(){
+  const greet = "Hello there, I am Barney. Please type your name to continue, or press Start Voice and say your name.";
+  setDialogue(greet);
+  speakText(greet);
+}
+greetOnLoad();
+
+// Save name
+saveNameBtn.addEventListener('click', () => {
+  const v = nameInput.value.trim();
+  if(!v) return;
+  userName = v;
+  localStorage.setItem('barney_name', userName);
+  const msg = `Hello ${userName}, now I know your name. That's great! Okay ${userName}, what are your phone or computer issues? We will work on them together.`;
+  setDialogue(msg);
+  speakText(msg);
+});
+
+// Clear name
+clearNameBtn.addEventListener('click', ()=>{
+  localStorage.removeItem('barney_name');
+  userName = '';
+  nameInput.value = '';
+  const msg = "I forgot your name. Type it again when you're ready.";
+  setDialogue(msg);
+  speakText(msg);
+});
+
+// --- Keyword knowledge base ---
+// Each entry: {keywords: [...], title, responseText}
+const KNOWLEDGE = [
+  {
+    keywords:["battery","battery drains","drains fast","battery life","battery dying"],
+    title:"Battery drains fast",
+    response: "Your phone's battery may be draining quickly due to background apps, high brightness, or an aging battery.\n\nSteps:\n1. Check battery usage in Settings and close or uninstall apps using lots of battery.\n2. Lower screen brightness and disable always-on display.\n3. Turn off unused radios like Bluetooth and GPS when not needed.\n4. Update system and apps, then restart the device.\n5. If battery health is poor (device >2 years), consider replacing the battery."
+  },
+  {
+    keywords:["won't charge","not charging","charging","connected not charging","charge"],
+    title:"Won't charge / Not charging",
+    response: "Charging issues often come from the cable, port, or software.\n\nSteps:\n1. Try a known-good cable and charger. Test on another device.\n2. Inspect and gently clean the charging port (use compressed air or a soft toothpick carefully).\n3. Restart the phone and try a different power outlet.\n4. Remove wireless charging case or magnets if used.\n5. If the port is loose or charging remains intermittent, seek professional port repair."
+  },
+  {
+    keywords:["overheat","overheating","hot phone","phone gets hot"],
+    title:"Overheating",
+    response: "Overheating can be caused by heavy CPU use, poor ventilation or battery problems.\n\nSteps:\n1. Remove the case and put the phone in a cooler place.\n2. Close heavy apps (games, streaming). Restart device.\n3. Lower brightness and disable intensive background tasks.\n4. Update apps and OS. If it overheats while idle or when charging, back up data and seek repair (battery fault possible)."
+  },
+  {
+    keywords:["touchscreen","not responding","touch not working","erratic touch"],
+    title:"Touchscreen not responding",
+    response: "If the touchscreen is unresponsive it could be a software freeze, dirty screen, or damaged digitizer.\n\nSteps:\n1. Restart or force-restart the device.\n2. Remove screen protector and clean the screen with a soft cloth.\n3. Boot into safe mode to check for third-party app interference.\n4. Update OS or factory reset after backup if needed.\n5. If hardware failure, screen/digitizer replacement is required."
+  },
+  {
+    keywords:["cracked screen","broken screen","screen cracked"],
+    title:"Cracked / Broken Screen",
+    response: "Cracked screens should be handled carefully.\n\nSteps:\n1. Backup your data immediately.\n2. Small cracks can be temporarily used with a protective film. For functionality loss or big cracks, replace the display.\n3. If you are not confident, use an authorized repair service or follow iFixit guides if doing DIY."
+  },
+  {
+    keywords:["camera","camera not working","blurry photos","camera error"],
+    title:"Camera problems",
+    response: "Camera issues are often lens dirt, app bugs, or hardware faults.\n\nSteps:\n1. Clean the lens and remove any case blocking the lens.\n2. Restart device and clear camera app cache (Android) or force-close app.\n3. Update camera app / OS. Test in safe mode.\n4. If no image shown, suspect hardware — seek repair."
+  },
+  {
+    keywords:["microphone","no sound","microphone not working","can't hear","speaker not working"],
+    title:"Microphone or speaker issues",
+    response: "Test whether it's a hardware or software problem.\n\nSteps:\n1. Record a voice memo to check the mic and play it back.\n2. Disconnect Bluetooth accessories; ensure the correct audio device is selected.\n3. Check app permissions for mic/speaker.\n4. Restart and update the device. If still broken, hardware repair may be needed."
+  },
+  {
+    keywords:["wifi","wi-fi","internet","no internet","can't connect wifi","wifi disconnects"],
+    title:"Wi-Fi or Internet problems",
+    response: "Connectivity issues may be from the phone, router or ISP.\n\nSteps:\n1. Toggle airplane mode, toggle Wi-Fi off and on.\n2. Restart your phone and your router/modem.\n3. Forget the Wi-Fi network and reconnect with the correct password.\n4. Reset network settings on the device.\n5. If many devices fail, check ISP or router firmware."
+  },
+  {
+    keywords:["bluetooth","pairing","bluetooth not connecting"],
+    title:"Bluetooth pairing problems",
+    response: "Bluetooth issues often come from pairing glitches.\n\nSteps:\n1. Turn Bluetooth off/on on both devices.\n2. Forget the device and re-pair.\n3. Ensure both are updated and have sufficient battery.\n4. Restart both devices if pairing fails."
+  },
+  {
+    keywords:["app crash","crash","app closes","force close","app keeps crashing"],
+    title:"App keeps crashing",
+    response: "Crashing apps can be fixed by clearing cache or reinstalling.\n\nSteps:\n1. Clear the app cache (Android) or reinstall the app.\n2. Update the app and the OS.\n3. Use Safe Mode to check for interference.\n4. If many apps crash, consider factory reset after backup."
+  },
+  {
+    keywords:["storage","low storage","full storage","delete space","out of storage"],
+    title:"Storage full / Low storage",
+    response: "Free up space and manage storage.\n\nSteps:\n1. Delete unused apps, old photos, and large videos.\n2. Use built-in storage manager to remove cache files.\n3. Move photos to cloud or SD card (if supported).\n4. For long-term speed, consider replacing HDD with SSD (computers) or expand storage where possible."
+  },
+  {
+    keywords:["bootloop","random restart","restarts","restart loop"],
+    title:"Random restarts / Bootloop",
+    response: "Bootloop often comes from bad updates or apps.\n\nSteps:\n1. Boot to safe/recovery mode and uninstall recent apps.\n2. Clear system cache (Android) if available.\n3. Back up your data and perform factory reset as last resort.\n4. If hardware fault persists, consult repair services."
+  },
+  {
+    keywords:["water","water damage","wet phone","liquid damage"],
+    title:"Water / Liquid damage",
+    response: "Quick actions can improve survival but are not guaranteed.\n\nSteps:\n1. Power off the device immediately and remove SIM/SD.\n2. Do NOT plug in or power on. Remove excess water gently.\n3. Dry in a ventilated place; avoid heat. Seek professional inspection quickly.\n4. Backup data if the device becomes responsive; physical repair may be required."
+  },
+
+  /* --- Computer related --- */
+  {
+    keywords:["computer won't turn on","pc won't turn on","won't power on","no power"],
+    title:"Computer won't power on",
+    response: "Check power sources and basic hardware.\n\nSteps:\n1. Verify power cable and outlet. Try another outlet and cable.\n2. For laptops, remove battery (if possible) and try AC only.\n3. Look for fans or lights. If totally silent, PSU or motherboard may be faulty and needs professional testing."
+  },
+  {
+    keywords:["no display","black screen","screen off","no monitor"],
+    title:"No display / Black screen",
+    response: "Is the machine on but no display? Check cables and GPU.\n\nSteps:\n1. Confirm monitor power and cable (try different cable/monitor).\n2. Reseat RAM and GPU if comfortable.\n3. Boot into BIOS/UEFI. If still black, GPU or motherboard issues may need repair."
+  },
+  {
+    keywords:["slow pc","slow computer","lag","sluggish"],
+    title:"Slow performance",
+    response: "Slow systems are often fixed by housekeeping or upgrades.\n\nSteps:\n1. Open Task Manager to see CPU/RAM/disk hogs and close heavy apps.\n2. Disable unnecessary startup programs.\n3. Run antivirus scan; clean malware if found.\n4. Consider upgrading HDD to SSD or adding RAM for big improvements."
+  },
+  {
+    keywords:["blue screen","bsod","stop code","blue screen of death"],
+    title:"Blue Screen (BSOD)",
+    response: "BSOD is a sign of driver or hardware problems.\n\nSteps:\n1. Note the stop code and search vendor guidance.\n2. Boot Safe Mode and remove recent drivers or updates.\n3. Run 'sfc /scannow' and 'DISM' commands on Windows to repair system files.\n4. Test RAM with MemTest and check drive health."
+  },
+  {
+    keywords:["can't boot","won't boot","stuck on logo","boot problem"],
+    title:"OS won't boot / stuck at logo",
+    response: "Use recovery tools and repair media.\n\nSteps:\n1. Try Startup Repair (Windows) or Recovery Mode (macOS/Linux).\n2. Use a recovery USB to repair the installation or restore from backup.\n3. If data is important, attempt data recovery before destructive repairs."
+  },
+  {
+    keywords:["hdd","hard drive","clicking noise","disk failure","ssd","slow disk"],
+    title:"Hard drive / SSD problems",
+    response: "Data-first approach for drive problems.\n\nSteps:\n1. If noisy (clicking), power down to avoid further damage.\n2. Connect the drive to another machine as external to copy important files.\n3. Use tools like CrystalDiskInfo, TestDisk or PhotoRec for logical recovery.\n4. For physical failure, consult professional data recovery services."
+  },
+  {
+    keywords:["no internet pc","pc wifi","ethernet not working","network pc"],
+    title:"No internet on computer",
+    response: "Network stack or drivers often cause connectivity issues.\n\nSteps:\n1. Restart the router and computer.\n2. Update network adapter drivers, and try a different cable or port.\n3. Reset network stack (Windows: netsh int ip reset) and run troubleshooters."
+  },
+  {
+    keywords:["usb not recognized","peripheral not working","printer not found","usb device"],
+    title:"Peripherals not recognized",
+    response: "Check basic hardware & drivers.\n\nSteps:\n1. Try another USB port and cable; test device on a different PC.\n2. Update or reinstall drivers from Device Manager.\n3. For printers, reinstall using vendor installer."
+  },
+  {
+    keywords:["no sound pc","audio not working","microphone pc"],
+    title:"Audio or microphone problems (computer)",
+    response: "Check device settings and drivers.\n\nSteps:\n1. Ensure correct playback/recording device is selected and not muted.\n2. Update/reinstall audio drivers and test with external headphones.\n3. Check sound services and run built-in troubleshooters."
+  },
+  {
+    keywords:["bios","uefi","firmware update","firmware"],
+    title:"BIOS / UEFI issues",
+    response: "Be careful with firmware updates.\n\nSteps:\n1. Reset BIOS to defaults if misconfigured.\n2. Only update BIOS/UEFI from official vendor site and avoid interruptions.\n3. If stuck after update, look for vendor recovery procedures."
+  },
+  {
+    keywords:["overheat pc","loud fans","fan noise","thermal"],
+    title:"Overheating / loud fans (PC)",
+    response: "Cooling & dust are common causes.\n\nSteps:\n1. Clean dust from fans and heat sinks; ensure good airflow.\n2. Reapply thermal paste if comfortable, or seek service.\n3. Check for background processes causing high CPU usage and fix them."
+  },
+  {
+    keywords:["virus","malware","infected","ransomware"],
+    title:"Virus / Malware infection",
+    response: "Act quickly but carefully.\n\nSteps:\n1. Disconnect from the internet to prevent spread.\n2. Run a reputable antivirus/malware scanner in Safe Mode.\n3. If ransomware or severe infection, consult professionals and consider restoring from backup."
+  },
+  {
+    keywords:["update","software update","os update","install updates"],
+    title:"Update problems",
+    response: "Installation errors can block boot or features.\n\nSteps:\n1. Ensure enough disk space and stable power before updating.\n2. Use vendor update tools and check known issues online.\n3. If update failed, use recovery options or undo the update via Safe Mode or System Restore."
+  },
+  {
+    keywords:["data recovery","recover files","lost files","deleted files"],
+    title:"Data recovery",
+    response: "Recovering files depends on cause.\n\nSteps:\n1. Stop using the affected drive to avoid overwriting files.\n2. Use recovery tools like Recuva, TestDisk, or PhotoRec for accidental deletes.\n3. For physical damage, consult professional data recovery services."
+  },
+
+  /* Generic fallback */
+  {
+    keywords:["default","help","issue","problem","support"],
+    title:"General troubleshooting",
+    response: "Try these general troubleshooting steps:\n1. Restart the device.\n2. Check cables, power, and connections.\n3. Update OS and apps/drivers.\n4. Backup important data before risky operations.\n5. Seek professional help for physical damage or data-recovery needs."
+  }
+];
+
+// Build keyword UI (compact list)
+function buildKeywordUI(){
+  const allKeys = [];
+  KNOWLEDGE.forEach(entry=>{
+    entry.keywords.slice(0,6).forEach(k=>{
+      allKeys.push({k: k, title: entry.title});
+    });
+  });
+  // Deduplicate and display
+  const unique = [...new Map(allKeys.map(item => [item.k, item])).values()];
+  const container = document.createElement('div');
+  container.className = 'kw';
+  unique.forEach(it=>{
+    const pill = document.createElement('div');
+    pill.className = 'pill';
+    pill.innerText = it.k;
+    pill.title = it.title;
+    pill.addEventListener('click', ()=> {
+      manualIssue.value = it.k;
+      manualIssue.focus();
+    });
+    container.appendChild(pill);
+  });
+  keywordsList.appendChild(container);
+}
+buildKeywordUI();
+
+// Matching function: find best KNOWLEDGE entry based on substring match
+function findBestMatch(text){
+  if(!text) return null;
+  const t = text.toLowerCase();
+  // score matches: longer keyword matches are stronger, first match returns
+  for(const entry of KNOWLEDGE){
+    for(const kw of entry.keywords){
+      if(t.includes(kw.toLowerCase())){
+        return entry;
+      }
+    }
+  }
+  return null;
+}
+
+// SpeechSynthesis wrapper
+function speakText(text, opts = {}) {
+  if(!('speechSynthesis' in window)){
+    setResponse("Speech not supported in this browser. Please use Chrome/Edge.");
+    return;
+  }
+  window.speechSynthesis.cancel(); // stop existing
+  const utter = new SpeechSynthesisUtterance(text);
+  // optional voice selection: pick first default voice matching lang
+  utter.lang = opts.lang || 'en-US';
+  utter.rate = opts.rate || 1.0;
+  utter.onstart = () => { voiceInfo.innerText = 'speaking'; }
+  utter.onend = () => { voiceInfo.innerText = 'idle'; }
+  utter.onerror = () => { voiceInfo.innerText = 'error'; }
+  // set voice if possible
+  const voices = window.speechSynthesis.getVoices();
+  if(voices && voices.length){
+    // try to pick an English voice
+    const preferred = voices.find(v => v.lang && v.lang.startsWith('en')) || voices[0];
+    if(preferred) utter.voice = preferred;
+  }
+  window.speechSynthesis.speak(utter);
+  return utter;
+}
+
+// Typing effect that attempts to sync with speech duration estimate
+// Estimate duration from words per minute then divide by chars
+function typeWithSpeech(text, speakOptions = {}){
+  // clear response box
+  responseEl.innerText = '';
+  // speak full text
+  speakText(text, speakOptions);
+
+  // compute estimated duration using words-per-minute (WPM)
+  const words = text.trim().split(/\s+/).filter(Boolean).length || 1;
+  const wpm = 160; // reasonable spoken speed
+  const estimatedSeconds = Math.max(1, (words / wpm) * 60); // seconds
+  const totalChars = text.length;
+  const charInterval = Math.max(6, (estimatedSeconds * 1000) / totalChars); // ms per char (min 6ms to avoid huge speed)
+
+  let i = 0;
+  const timer = setInterval(()=>{
+    // reveal next char
+    i++;
+    responseEl.innerText = text.slice(0, i);
+    // auto-scroll if needed
+    responseEl.scrollTop = responseEl.scrollHeight;
+    if(i >= totalChars){
+      clearInterval(timer);
+    }
+  }, charInterval);
+}
+
+// Process issue text (manual or recognized)
+function processIssueText(text){
+  if(!text) return;
+  // show what user said
+  setDialogue((userName ? userName : "User") + " said: " + text);
+  // find best match
+  const entry = findBestMatch(text);
+  if(entry){
+    const full = `${entry.title}\n\n${entry.response}`;
+    typeWithSpeech(full);
+  } else {
+    // fallback generic advice
+    const generic = "I didn't find an exact match, but here are general steps: Restart your device, check power/cables, update apps/OS, backup important data, and try again. If it's a hardware issue (smoke, swelling battery, clicking hard drive), stop and seek professional help.";
+    typeWithSpeech("General help\n\n" + generic);
+  }
+}
+
+// Manual Ask button
+askBtn.addEventListener('click', ()=>{
+  const t = manualIssue.value.trim();
+  if(!t) { manualIssue.focus(); return; }
+  processIssueText(t);
+});
+
+// --- SpeechRecognition (voice input) ---
+let recognition = null;
+let recognizing = false;
+if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => { recognizing = true; micBtn.innerText = '🎙️ Listening...'; voiceInfo.innerText = 'listening'; }
+  recognition.onend = () => { recognizing = false; micBtn.innerText = '🎤 Start Voice'; voiceInfo.innerText = 'idle'; }
+  recognition.onerror = (e) => { recognizing = false; micBtn.innerText = '🎤 Start Voice'; voiceInfo.innerText = 'error'; console.warn('Recognition error', e); }
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    // special case: if user says name (like "My name is ...") and name not set, try to capture
+    const lower = transcript.toLowerCase();
+    if(!userName && (lower.startsWith('my name is') || lower.startsWith("i'm ") || lower.startsWith("i am "))){
+      // parse name
+      const parts = transcript.split(/\b(is|am|i'm)\b/i);
+      const maybe = parts.slice(-1).join('').trim();
+      if(maybe) {
+        nameInput.value = maybe;
+        saveNameBtn.click();
+        return;
+      }
+    }
+    processIssueText(transcript);
+  };
+} else {
+  micBtn.disabled = true;
+  micBtn.title = "Speech recognition not supported in this browser. Use Chrome/Edge.";
+  voiceInfo.innerText = "not supported";
+}
+
+// Start/Stop buttons
+micBtn.addEventListener('click', ()=>{
+  if(!recognition){
+    alert("Speech recognition not supported. Type your issue and press Ask.");
+    return;
+  }
+  try{
+    recognition.start();
+  }catch(e){
+    console.warn(e);
+  }
+});
+stopMicBtn.addEventListener('click', ()=>{
+  if(recognition && recognizing) recognition.stop();
+});
+
+// Helpful: press Enter inside manualIssue triggers Ask
+manualIssue.addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter'){ e.preventDefault(); askBtn.click(); }
+});
+
+// show available voices if voices load after onstart
+window.speechSynthesis.onvoiceschanged = () => {
+  const voices = window.speechSynthesis.getVoices();
+  voiceInfo.innerText = voices.length ? voices[0].lang + ' (' + (voices[0].name || 'voice') + ')' : 'voices loaded';
+};
+
+// accessibility small improvement
+setTimeout(()=>{ window.speechSynthesis.getVoices(); }, 500);
+
+// Optional: quick demo content
+document.addEventListener('DOMContentLoaded', ()=>{
+  // If user already set their name, greet personally
+  if(localStorage.getItem('barney_name')){
+    userName = localStorage.getItem('barney_name');
+    const greeting = `Welcome back ${userName}. Press Start Voice and say your issue or type it below.`;
+    setDialogue(greeting);
+    // don't auto speak on reload to avoid surprise
+  } else {
+    // initial greeting already ran
+  }
+});
+</script>
+</body>
+</html>
